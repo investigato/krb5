@@ -27,16 +27,17 @@ type SignatureData struct {
 	RODCIdentifier uint16 // A 16-bit unsigned integer value in little-endian format that contains the first 16 bits of the key version number ([MS-KILE] section 3.1.5.8) when the KDC is an RODC. When the KDC is not an RODC, this field does not exist.
 }
 
-// Unmarshal bytes into the SignatureData struct
+// Unmarshal bytes into the SignatureData struct.
 func (k *SignatureData) Unmarshal(b []byte) (rb []byte, err error) {
 	r := mstypes.NewReader(bytes.NewReader(b))
 
 	k.SignatureType, err = r.Uint32()
 	if err != nil {
-		return
+		return rb, err
 	}
 
 	var c int
+
 	switch k.SignatureType {
 	case chksumtype.KERB_CHECKSUM_HMAC_MD5_UNSIGNED:
 		c = 16
@@ -49,9 +50,10 @@ func (k *SignatureData) Unmarshal(b []byte) (rb []byte, err error) {
 	case uint32(chksumtype.HMAC_SHA384_192_AES256):
 		c = 24
 	}
+
 	k.Signature, err = r.ReadBytes(c)
 	if err != nil {
-		return
+		return rb, err
 	}
 
 	// When the KDC is not an Read Only Domain Controller (RODC), this field does not exist.
@@ -62,10 +64,10 @@ func (k *SignatureData) Unmarshal(b []byte) (rb []byte, err error) {
 		}
 	}
 
-	// Create bytes with zeroed signature needed for checksum verification
-	rb = make([]byte, len(b), len(b))
+	// Create bytes with zeroed signature needed for checksum verification.
+	rb = make([]byte, len(b))
 	copy(rb, b)
-	z := make([]byte, len(b), len(b))
+	z := make([]byte, len(b))
 	copy(rb[4:4+c], z)
 
 	return

@@ -36,7 +36,9 @@ func NewAuthenticator(realm string, cname PrincipalName) (Authenticator, error) 
 	if err != nil {
 		return Authenticator{}, err
 	}
+
 	t := time.Now().UTC()
+
 	return Authenticator{
 		AVNO:      iana.PVNO,
 		CRealm:    realm,
@@ -49,19 +51,26 @@ func NewAuthenticator(realm string, cname PrincipalName) (Authenticator, error) 
 }
 
 // GenerateSeqNumberAndSubKey sets the Authenticator's sequence number and subkey.
-func (a *Authenticator) GenerateSeqNumberAndSubKey(keyType int32, keySize int) error {
-	seq, err := rand.Int(rand.Reader, big.NewInt(math.MaxUint32))
-	if err != nil {
+func (a *Authenticator) GenerateSeqNumberAndSubKey(keyType int32, keySize int) (err error) {
+	var seq *big.Int
+
+	if seq, err = rand.Int(rand.Reader, big.NewInt(math.MaxUint32)); err != nil {
 		return err
 	}
+
 	a.SeqNumber = seq.Int64() & 0x3fffffff
-	//Generate subkey value
-	sk := make([]byte, keySize, keySize)
-	rand.Read(sk)
+	// Generate subkey value.
+	sk := make([]byte, keySize)
+
+	if _, err = rand.Read(sk); err != nil {
+		return err
+	}
+
 	a.SubKey = EncryptionKey{
 		KeyType:  keyType,
 		KeyValue: sk,
 	}
+
 	return nil
 }
 
@@ -77,6 +86,8 @@ func (a *Authenticator) Marshal() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	b = asn1tools.AddASNAppTag(b, asn1apptag.Authenticator)
+
 	return b, nil
 }
