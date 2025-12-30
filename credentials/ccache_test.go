@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/go-krb5/krb5/iana/nametype"
 	"github.com/go-krb5/krb5/test/testdata"
@@ -15,22 +16,17 @@ func TestParse(t *testing.T) {
 	t.Parallel()
 
 	b, err := hex.DecodeString(testdata.CCACHE_TEST)
-	if err != nil {
-		t.Fatal("Error decoding test data")
-	}
+	require.NoError(t, err)
 
 	c := new(CCache)
 
-	err = c.Unmarshal(b)
-	if err != nil {
-		t.Fatalf("Error parsing cache: %v", err)
-	}
+	require.NoError(t, c.Unmarshal(b))
 
 	assert.Equal(t, uint8(4), c.Version, "Version not as expected")
 	assert.Equal(t, 1, len(c.Header.fields), "Number of header fields not as expected")
 	assert.Equal(t, uint16(1), c.Header.fields[0].tag, "Header tag not as expected")
 	assert.Equal(t, uint16(8), c.Header.fields[0].length, "Length of header not as expected")
-	assert.Equal(t, "TEST.GOKRB5", c.DefaultPrincipal.Realm, "Default client principal realm not as expected")
+	assert.Equal(t, "TEST.GOKRB5", c.DefaultPrincipal.Realm)
 	assert.Equal(t, "testuser1", c.DefaultPrincipal.PrincipalName.PrincipalNameString(), "Default client principaal name not as expected")
 	assert.Equal(t, 3, len(c.Credentials), "Number of credentials not as expected")
 
@@ -51,16 +47,11 @@ func TestCCache_GetClientPrincipalName(t *testing.T) {
 	t.Parallel()
 
 	b, err := hex.DecodeString(testdata.CCACHE_TEST)
-	if err != nil {
-		t.Fatal("Error decoding test data")
-	}
+	require.NoError(t, err)
 
 	c := new(CCache)
 
-	err = c.Unmarshal(b)
-	if err != nil {
-		t.Fatalf("Error parsing cache: %v", err)
-	}
+	require.NoError(t, c.Unmarshal(b))
 
 	pn := types.PrincipalName{
 		NameType:   nametype.KRB_NT_PRINCIPAL,
@@ -73,21 +64,17 @@ func TestCCache_GetClientCredentials(t *testing.T) {
 	t.Parallel()
 
 	b, err := hex.DecodeString(testdata.CCACHE_TEST)
-	if err != nil {
-		t.Fatal("Error decoding test data")
-	}
+	require.NoError(t, err)
 
 	c := new(CCache)
 
-	err = c.Unmarshal(b)
-	if err != nil {
-		t.Fatalf("Error parsing cache: %v", err)
-	}
+	require.NoError(t, c.Unmarshal(b))
 
 	pn := types.PrincipalName{
 		NameType:   nametype.KRB_NT_PRINCIPAL,
 		NameString: []string{"testuser1"},
 	}
+
 	cred := c.GetClientCredentials()
 	assert.Equal(t, "TEST.GOKRB5", cred.Domain(), "Client realm in credential not as expected")
 	assert.Equal(t, pn, cred.CName(), "Client Principal Name not as expected")
@@ -98,16 +85,11 @@ func TestCCache_GetClientRealm(t *testing.T) {
 	t.Parallel()
 
 	b, err := hex.DecodeString(testdata.CCACHE_TEST)
-	if err != nil {
-		t.Fatal("Error decoding test data")
-	}
+	require.NoError(t, err)
 
 	c := new(CCache)
 
-	err = c.Unmarshal(b)
-	if err != nil {
-		t.Fatalf("Error parsing cache: %v", err)
-	}
+	require.NoError(t, c.Unmarshal(b))
 
 	assert.Equal(t, "TEST.GOKRB5", c.GetClientRealm(), "Client realm not as expected")
 }
@@ -116,16 +98,11 @@ func TestCCache_GetEntry(t *testing.T) {
 	t.Parallel()
 
 	b, err := hex.DecodeString(testdata.CCACHE_TEST)
-	if err != nil {
-		t.Fatal("Error decoding test data")
-	}
+	require.NoError(t, err)
 
 	c := new(CCache)
 
-	err = c.Unmarshal(b)
-	if err != nil {
-		t.Fatalf("Error parsing cache: %v", err)
-	}
+	require.NoError(t, c.Unmarshal(b))
 
 	httppn := types.PrincipalName{
 		NameType:   nametype.KRB_NT_PRINCIPAL,
@@ -133,27 +110,19 @@ func TestCCache_GetEntry(t *testing.T) {
 	}
 
 	cred, ok := c.GetEntry(httppn)
-	if !ok {
-		t.Fatal("Could not get entry from CCache as not found")
-	}
-
-	assert.Equal(t, httppn, cred.Server.PrincipalName, "Credential does not have the right server principal name")
+	require.True(t, ok)
+	assert.Equal(t, httppn, cred.Server.PrincipalName)
 }
 
 func TestCCache_GetEntries(t *testing.T) {
 	t.Parallel()
 
 	b, err := hex.DecodeString(testdata.CCACHE_TEST)
-	if err != nil {
-		t.Fatal("Error decoding test data")
-	}
+	require.NoError(t, err)
 
 	c := new(CCache)
 
-	err = c.Unmarshal(b)
-	if err != nil {
-		t.Fatalf("Error parsing cache: %v", err)
-	}
+	require.NoError(t, c.Unmarshal(b))
 
 	creds := c.GetEntries()
 	assert.Equal(t, 2, len(creds), "Number of credentials entries not as expected")

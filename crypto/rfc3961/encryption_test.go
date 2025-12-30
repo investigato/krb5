@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/go-krb5/krb5/crypto"
 	"github.com/go-krb5/krb5/crypto/rfc3961"
@@ -47,7 +48,8 @@ func TestDES3DeriveRandom(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var e crypto.Des3CbcSha1Kd
 
-			key, _ := hex.DecodeString(test.key)
+			key, err := hex.DecodeString(test.key)
+			require.NoError(t, err)
 
 			var usage []byte
 			if test.usage == "kerberos" {
@@ -63,9 +65,7 @@ func TestDES3DeriveRandom(t *testing.T) {
 
 			// Test DK (derive-key) function.
 			dk, err := e.DeriveKey(key, usage)
-			if err != nil {
-				t.Fatalf("DeriveKey failed: %v", err)
-			}
+			require.NoError(t, err)
 
 			assert.Equal(t, test.expectedDK, hex.EncodeToString(dk), "DK result not as expected")
 		})
@@ -173,13 +173,16 @@ func TestDES3EncryptDecryptData(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var e crypto.Des3CbcSha1Kd
 
-			key, _ := hex.DecodeString(test.key)
-			plaintext, _ := hex.DecodeString(test.plaintext)
+			key, err := hex.DecodeString(test.key)
+			require.NoError(t, err)
+
+			plaintext, err := hex.DecodeString(test.plaintext)
+			require.NoError(t, err)
 
 			_, ciphertext, err := rfc3961.DES3EncryptData(key, plaintext, &e)
 
 			if test.expectError {
-				assert.Error(t, err, "Expected error for empty plaintext")
+				assert.Error(t, err)
 				return
 			}
 
@@ -250,7 +253,7 @@ func TestDES3EncryptDecryptMessage(t *testing.T) {
 				t.Fatalf("DES3DecryptMessage failed: %v", err)
 			}
 
-			assert.Equal(t, plaintext, decryptedMessage, "Round-trip encrypt/decrypt message failed")
+			assert.Equal(t, plaintext, decryptedMessage)
 		})
 	}
 }
@@ -267,7 +270,7 @@ func TestDES3EncryptData_InvalidKeySize(t *testing.T) {
 
 	_, _, err := rfc3961.DES3EncryptData(wrongKey, plaintext, &e)
 
-	assert.Error(t, err, "Expected error for invalid key size")
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "incorrect keysize", "Error message should mention keysize")
 }
 
@@ -281,7 +284,7 @@ func TestDES3DecryptData_InvalidKeySize(t *testing.T) {
 
 	_, err := rfc3961.DES3DecryptData(wrongKey, ciphertext, &e)
 
-	assert.Error(t, err, "Expected error for invalid key size")
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "incorrect keysize", "Error message should mention keysize")
 }
 
@@ -296,7 +299,7 @@ func TestDES3DecryptMessage_InvalidCiphertextSize(t *testing.T) {
 
 	_, err := rfc3961.DES3DecryptMessage(key, fakeCiphertext, testUsage, &e)
 
-	assert.Error(t, err, "Expected error for ciphertext size")
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "ciphertext is not a multiple of the block size",
 		"Error message should mention invalid ciphertext size")
 }
