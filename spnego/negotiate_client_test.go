@@ -76,7 +76,7 @@ func TestContextStateTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := NewClientContext(dummySessionKey(), 0)
+			ctx := NewClientContext(dummySessionKey(), 0, 0)
 			tt.setup(ctx)
 
 			err := tt.action(ctx)
@@ -140,7 +140,7 @@ func TestContextGating(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := NewClientContext(dummySessionKey(), 0)
+			ctx := NewClientContext(dummySessionKey(), 0, 0)
 
 			// Set up state.
 			switch tt.state {
@@ -429,7 +429,7 @@ func TestContextStateString(t *testing.T) {
 // TestMechTypeListDERPreservation tests that the raw DER is correctly preserved.
 func TestMechTypeListDERPreservation(t *testing.T) {
 	// Create a context with a known MechTypeList DER.
-	ctx := NewClientContext(dummySessionKey(), 0)
+	ctx := NewClientContext(dummySessionKey(), 0, 0)
 
 	originalDER := []byte{0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x12, 0x01, 0x02, 0x02}
 	ctx.SetMechTypeListDER(originalDER)
@@ -511,7 +511,7 @@ func TestNegotiateClientReset(t *testing.T) {
 	client := NewNegotiateClient(nil, "HTTP/test")
 
 	// Simulate having a context.
-	client.ctx = NewClientContext(dummySessionKey(), 0)
+	client.ctx = NewClientContext(dummySessionKey(), 0, 0)
 	_ = client.ctx.SetInProgress()
 
 	assert.NotNil(t, client.ctx)
@@ -531,7 +531,7 @@ func TestNegotiateClientIsEstablished(t *testing.T) {
 	assert.False(t, client.IsEstablished())
 
 	// Context not established.
-	client.ctx = NewClientContext(dummySessionKey(), 0)
+	client.ctx = NewClientContext(dummySessionKey(), 0, 0)
 	assert.False(t, client.IsEstablished())
 
 	// Context in progress.
@@ -575,7 +575,7 @@ func TestExtractRawMechTypesDER(t *testing.T) {
 
 // TestClientContextSetFailed tests the SetFailed method.
 func TestClientContextSetFailed(t *testing.T) {
-	ctx := NewClientContext(dummySessionKey(), 0)
+	ctx := NewClientContext(dummySessionKey(), 0, 0)
 	_ = ctx.SetInProgress()
 
 	assert.Equal(t, ContextStateInProgress, ctx.State())
@@ -588,7 +588,7 @@ func TestClientContextSetFailed(t *testing.T) {
 // TestClientContextGetKey tests the GetKey method with and without subkey.
 func TestClientContextGetKey(t *testing.T) {
 	sessionKey := dummySessionKey()
-	ctx := NewClientContext(sessionKey, 0)
+	ctx := NewClientContext(sessionKey, 0, 0)
 
 	// Without subkey, should return session key.
 	key := ctx.GetKey()
@@ -610,7 +610,7 @@ func TestClientContextGetKey(t *testing.T) {
 
 // TestClientContextHasAcceptorSubkey tests the HasAcceptorSubkey method.
 func TestClientContextHasAcceptorSubkey(t *testing.T) {
-	ctx := NewClientContext(dummySessionKey(), 0)
+	ctx := NewClientContext(dummySessionKey(), 0, 0)
 
 	assert.False(t, ctx.HasAcceptorSubkey())
 
@@ -626,23 +626,39 @@ func TestClientContextHasAcceptorSubkey(t *testing.T) {
 
 // TestClientContextSequenceNumbers tests the sequence number methods.
 func TestClientContextSequenceNumbers(t *testing.T) {
-	ctx := NewClientContext(dummySessionKey(), 0)
+	t.Run("starts at zero by default", func(t *testing.T) {
+		ctx := NewClientContext(dummySessionKey(), 0, 0)
 
-	// Test send sequence numbers.
-	assert.Equal(t, uint64(0), ctx.NextSendSeqNum())
-	assert.Equal(t, uint64(1), ctx.NextSendSeqNum())
-	assert.Equal(t, uint64(2), ctx.NextSendSeqNum())
+		// Test send sequence numbers start at 0.
+		assert.Equal(t, uint64(0), ctx.NextSendSeqNum())
+		assert.Equal(t, uint64(1), ctx.NextSendSeqNum())
+		assert.Equal(t, uint64(2), ctx.NextSendSeqNum())
 
-	// Test receive sequence numbers.
-	assert.Equal(t, uint64(0), ctx.NextRecvSeqNum())
-	assert.Equal(t, uint64(1), ctx.NextRecvSeqNum())
-	assert.Equal(t, uint64(2), ctx.NextRecvSeqNum())
+		// Test receive sequence numbers start at 0.
+		assert.Equal(t, uint64(0), ctx.NextRecvSeqNum())
+		assert.Equal(t, uint64(1), ctx.NextRecvSeqNum())
+		assert.Equal(t, uint64(2), ctx.NextRecvSeqNum())
+	})
+
+	t.Run("respects initial sequence number", func(t *testing.T) {
+		// Simulate a sequence number from the Authenticator (30-bit masked).
+		initialSeqNum := int64(0x12345678)
+		ctx := NewClientContext(dummySessionKey(), 0, initialSeqNum)
+
+		// Send sequence numbers should start at the initial value.
+		assert.Equal(t, uint64(initialSeqNum), ctx.NextSendSeqNum())
+		assert.Equal(t, uint64(initialSeqNum+1), ctx.NextSendSeqNum())
+		assert.Equal(t, uint64(initialSeqNum+2), ctx.NextSendSeqNum())
+
+		// Receive sequence numbers still start at 0 (set later from AP-REP).
+		assert.Equal(t, uint64(0), ctx.NextRecvSeqNum())
+	})
 }
 
 // TestClientContextFlags tests the Flags method.
 func TestClientContextFlags(t *testing.T) {
 	flags := uint32(0x1234)
-	ctx := NewClientContext(dummySessionKey(), flags)
+	ctx := NewClientContext(dummySessionKey(), flags, 0)
 
 	assert.Equal(t, flags, ctx.Flags())
 }
@@ -665,7 +681,7 @@ func TestMarshalMechTypeList(t *testing.T) {
 
 // TestMechListMICWithoutDER tests MechListMIC when DER bytes are not set.
 func TestMechListMICWithoutDER(t *testing.T) {
-	ctx := NewClientContext(dummySessionKey(), 0)
+	ctx := NewClientContext(dummySessionKey(), 0, 0)
 	_ = ctx.SetInProgress()
 	_ = ctx.SetEstablished()
 
@@ -677,7 +693,7 @@ func TestMechListMICWithoutDER(t *testing.T) {
 
 // TestVerifyMechListMICWithoutDER tests VerifyMechListMIC when DER bytes are not set.
 func TestVerifyMechListMICWithoutDER(t *testing.T) {
-	ctx := NewClientContext(dummySessionKey(), 0)
+	ctx := NewClientContext(dummySessionKey(), 0, 0)
 	_ = ctx.SetInProgress()
 	_ = ctx.SetEstablished()
 
@@ -689,7 +705,7 @@ func TestVerifyMechListMICWithoutDER(t *testing.T) {
 
 // TestVerifyMICNotEstablished tests VerifyMIC when context is not established.
 func TestVerifyMICNotEstablished(t *testing.T) {
-	ctx := NewClientContext(dummySessionKey(), 0)
+	ctx := NewClientContext(dummySessionKey(), 0, 0)
 
 	// VerifyMIC should fail when not established.
 	_, err := ctx.VerifyMIC(&gssapi.MICToken{}, []byte("payload"))
@@ -699,7 +715,7 @@ func TestVerifyMICNotEstablished(t *testing.T) {
 
 // TestUnwrapNotEstablished tests Unwrap when context is not established.
 func TestUnwrapNotEstablished(t *testing.T) {
-	ctx := NewClientContext(dummySessionKey(), 0)
+	ctx := NewClientContext(dummySessionKey(), 0, 0)
 
 	// Unwrap should fail when not established.
 	_, err := ctx.Unwrap(&gssapi.WrapToken{})
@@ -734,7 +750,7 @@ func TestKRB5TokenVerifyAPRepNotAPRep(t *testing.T) {
 	token := &KRB5Token{}
 	token.tokID, _ = decodeHex(TOK_ID_KRB_AP_REQ)
 
-	ctx := NewClientContext(dummySessionKey(), 0)
+	ctx := NewClientContext(dummySessionKey(), 0, 0)
 	_ = ctx.SetInProgress()
 
 	ok, status := token.VerifyAPRep(ctx)
@@ -786,7 +802,7 @@ func TestNegotiateClientContext(t *testing.T) {
 	assert.Nil(t, client.Context())
 
 	// Set a context.
-	client.ctx = NewClientContext(dummySessionKey(), 0)
+	client.ctx = NewClientContext(dummySessionKey(), 0, 0)
 	assert.NotNil(t, client.Context())
 }
 
@@ -810,7 +826,7 @@ func TestNegotiateClientSessionKey(t *testing.T) {
 
 	// With context.
 	sessionKey := dummySessionKey()
-	client.ctx = NewClientContext(sessionKey, 0)
+	client.ctx = NewClientContext(sessionKey, 0, 0)
 	key, err := client.SessionKey()
 	require.NoError(t, err)
 	assert.Equal(t, sessionKey.KeyType, key.KeyType)
@@ -827,7 +843,7 @@ func TestNegotiateClientGetMIC(t *testing.T) {
 	assert.Contains(t, err.Error(), "no security context")
 
 	// With context but not established.
-	client.ctx = NewClientContext(dummySessionKey(), 0)
+	client.ctx = NewClientContext(dummySessionKey(), 0, 0)
 	_, err = client.GetMIC([]byte("test"))
 	assert.Error(t, err)
 }

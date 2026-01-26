@@ -85,12 +85,15 @@ type ClientContext struct {
 }
 
 // NewClientContext creates a new client-side security context.
-func NewClientContext(sessionKey types.EncryptionKey, flags uint32) *ClientContext {
+// The initialSeqNum should be the sequence number from the Authenticator in the AP-REQ.
+// Per RFC 4121, this is used as the starting sequence number for outgoing messages.
+func NewClientContext(sessionKey types.EncryptionKey, flags uint32, initialSeqNum int64) *ClientContext {
 	return &ClientContext{
 		state:       ContextStateInitial,
 		sessionKey:  sessionKey,
 		isInitiator: true,
 		flags:       flags,
+		sendSeqNum:  uint64(initialSeqNum),
 	}
 }
 

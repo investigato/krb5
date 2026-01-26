@@ -39,6 +39,10 @@ type NegTokenInit struct {
 	// This is critical for mechListMIC computation per RFC 4178 - the MIC
 	// must be computed over the exact bytes, not a re-encoded version.
 	rawMechTypesDER []byte
+	// initialSeqNum stores the Authenticator's sequence number from the AP-REQ.
+	// This should be used to initialize the client's send sequence number
+	// per RFC 4121.
+	initialSeqNum int64
 }
 
 type marshalNegTokenInit struct {
@@ -139,6 +143,12 @@ func (n *NegTokenInit) RawMechTypesDER() []byte {
 func (n *NegTokenInit) SetRawMechTypesDER(der []byte) {
 	n.rawMechTypesDER = make([]byte, len(der))
 	copy(n.rawMechTypesDER, der)
+}
+
+// InitialSeqNum returns the Authenticator's sequence number from the AP-REQ.
+// This should be used to initialize the client's send sequence number.
+func (n *NegTokenInit) InitialSeqNum() int64 {
+	return n.initialSeqNum
 }
 
 // Verify an Init negotiation token.
@@ -426,12 +436,12 @@ func NewNegTokenInitKRB5(cl *client.Client, tkt messages.Ticket, sessionKey type
 
 // NewNegTokenInitKRB5WithFlags creates new Init negotiation token for Kerberos 5 with custom flags.
 func NewNegTokenInitKRB5WithFlags(cl *client.Client, tkt messages.Ticket, sessionKey types.EncryptionKey, flagsGSSAPI []int, optionsAP []int) (NegTokenInit, error) {
-	mt, err := NewKRB5TokenAPREQ(cl, tkt, sessionKey, flagsGSSAPI, optionsAP)
+	result, err := NewKRB5TokenAPREQ(cl, tkt, sessionKey, flagsGSSAPI, optionsAP)
 	if err != nil {
 		return NegTokenInit{}, fmt.Errorf("error getting KRB5 token; %w", err)
 	}
 
-	mtb, err := mt.Marshal()
+	mtb, err := result.Token.Marshal()
 	if err != nil {
 		return NegTokenInit{}, fmt.Errorf("error marshalling KRB5 token; %w", err)
 	}
@@ -448,5 +458,6 @@ func NewNegTokenInitKRB5WithFlags(cl *client.Client, tkt messages.Ticket, sessio
 		MechTypes:       mechTypes,
 		MechTokenBytes:  mtb,
 		rawMechTypesDER: rawMechTypesDER,
+		initialSeqNum:   result.SeqNum,
 	}, nil
 }

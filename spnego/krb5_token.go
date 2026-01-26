@@ -200,8 +200,17 @@ func (m *KRB5Token) Context() context.Context {
 	return m.context
 }
 
+// KRB5TokenResult contains the result of creating a KRB5 token, including
+// the token and the authenticator sequence number for context initialization.
+type KRB5TokenResult struct {
+	Token  KRB5Token
+	SeqNum int64
+}
+
 // NewKRB5TokenAPREQ creates a new KRB5 token with AP_REQ.
-func NewKRB5TokenAPREQ(cl *client.Client, tkt messages.Ticket, sessionKey types.EncryptionKey, flagsGSSAPI []int, optionsAP []int) (KRB5Token, error) {
+// Returns a KRB5TokenResult containing the token and the authenticator's
+// sequence number, which should be used to initialize the security context.
+func NewKRB5TokenAPREQ(cl *client.Client, tkt messages.Ticket, sessionKey types.EncryptionKey, flagsGSSAPI []int, optionsAP []int) (KRB5TokenResult, error) {
 	// TODO consider providing the SPN rather than the specific tkt and key and get these from the krb client.
 	var m KRB5Token
 
@@ -211,8 +220,11 @@ func NewKRB5TokenAPREQ(cl *client.Client, tkt messages.Ticket, sessionKey types.
 
 	auth, err := krb5TokenAuthenticator(cl.Credentials, flagsGSSAPI)
 	if err != nil {
-		return m, err
+		return KRB5TokenResult{}, err
 	}
+
+	// Capture the sequence number before the authenticator is encrypted.
+	seqNum := auth.SeqNumber
 
 	APReq, err := messages.NewAPReq(
 		tkt,
@@ -220,7 +232,7 @@ func NewKRB5TokenAPREQ(cl *client.Client, tkt messages.Ticket, sessionKey types.
 		auth,
 	)
 	if err != nil {
-		return m, err
+		return KRB5TokenResult{}, err
 	}
 
 	for _, o := range optionsAP {
@@ -229,7 +241,7 @@ func NewKRB5TokenAPREQ(cl *client.Client, tkt messages.Ticket, sessionKey types.
 
 	m.APReq = APReq
 
-	return m, nil
+	return KRB5TokenResult{Token: m, SeqNum: seqNum}, nil
 }
 
 // krb5TokenAuthenticator creates a new kerberos authenticator for kerberos MechToken.

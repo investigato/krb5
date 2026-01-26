@@ -152,7 +152,7 @@ func (c *NegotiateClient) handleInitialChallenge(req *http.Request) (*http.Respo
 		flagsUint |= uint32(f)
 	}
 
-	c.ctx = NewClientContext(sessionKey, flagsUint)
+	c.ctx = NewClientContext(sessionKey, flagsUint, negTokenInit.InitialSeqNum())
 
 	// Store the raw MechTypes DER for MIC computation.
 	c.ctx.SetMechTypeListDER(negTokenInit.RawMechTypesDER())
