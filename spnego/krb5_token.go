@@ -171,6 +171,30 @@ func (m *KRB5Token) IsKRBError() bool {
 	return hex.EncodeToString(m.tokID) == TOK_ID_KRB_ERROR
 }
 
+// VerifyAPRep verifies an AP_REP token using the provided client context.
+// This is used for client-side mutual authentication. The session key from
+// the context is used to decrypt the EncAPRepPart.
+func (m *KRB5Token) VerifyAPRep(ctx *ClientContext) (bool, gssapi.Status) {
+	if !m.IsAPRep() {
+		return false, gssapi.Status{Code: gssapi.StatusDefectiveToken, Message: "token is not an AP_REP"}
+	}
+
+	if err := ctx.ProcessAPRep(&m.APRep); err != nil {
+		return false, gssapi.Status{Code: gssapi.StatusDefectiveToken, Message: err.Error()}
+	}
+
+	return true, gssapi.Status{Code: gssapi.StatusComplete}
+}
+
+// GetKRBError returns the KRB_ERROR if this token contains one, or an error otherwise.
+func (m *KRB5Token) GetKRBError() (*messages.KRBError, error) {
+	if !m.IsKRBError() {
+		return nil, errors.New("token is not a KRB_ERROR")
+	}
+
+	return &m.KRBError, nil
+}
+
 // Context returns the KRB5 token's context which will contain any verify user identity information.
 func (m *KRB5Token) Context() context.Context {
 	return m.context
