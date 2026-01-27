@@ -952,3 +952,183 @@ func TestHTTPAuthHeaderParsing(t *testing.T) {
 		})
 	}
 }
+
+// TestFindNegotiateChallenge tests the findNegotiateChallenge helper function.
+func TestFindNegotiateChallenge(t *testing.T) {
+	tests := []struct {
+		name           string
+		headers        []string
+		expectNil      bool
+		expectHasToken bool
+		expectToken    string
+	}{
+		{
+			name:      "No headers",
+			headers:   nil,
+			expectNil: true,
+		},
+		{
+			name:      "No WWW-Authenticate header",
+			headers:   []string{},
+			expectNil: true,
+		},
+		{
+			name:           "Single bare Negotiate",
+			headers:        []string{"Negotiate"},
+			expectNil:      false,
+			expectHasToken: false,
+		},
+		{
+			name:           "Single Negotiate with token",
+			headers:        []string{"Negotiate dGVzdHRva2Vu"},
+			expectNil:      false,
+			expectHasToken: true,
+			expectToken:    "dGVzdHRva2Vu",
+		},
+		{
+			name:           "Multiple headers - Kerberos first, then Negotiate",
+			headers:        []string{"Kerberos", "Negotiate"},
+			expectNil:      false,
+			expectHasToken: false,
+		},
+		{
+			name:           "Multiple headers - bare Negotiate first, then Kerberos",
+			headers:        []string{"Negotiate", "Kerberos"},
+			expectNil:      false,
+			expectHasToken: false,
+		},
+		{
+			name:           "Multiple headers - Negotiate with token preferred over bare",
+			headers:        []string{"Negotiate", "Negotiate dGVzdHRva2Vu"},
+			expectNil:      false,
+			expectHasToken: true,
+			expectToken:    "dGVzdHRva2Vu",
+		},
+		{
+			name:           "Multiple headers - token first (returns immediately)",
+			headers:        []string{"Negotiate dGVzdHRva2Vu", "Negotiate"},
+			expectNil:      false,
+			expectHasToken: true,
+			expectToken:    "dGVzdHRva2Vu",
+		},
+		{
+			name:           "WinRM-style - Negotiate and Kerberos both present",
+			headers:        []string{"Negotiate", "Kerberos"},
+			expectNil:      false,
+			expectHasToken: false,
+		},
+		{
+			name:           "WinRM-style with token - prefer Negotiate with token",
+			headers:        []string{"Kerberos", "Negotiate dGVzdHRva2Vu"},
+			expectNil:      false,
+			expectHasToken: true,
+			expectToken:    "dGVzdHRva2Vu",
+		},
+		{
+			name:      "Only Basic auth",
+			headers:   []string{"Basic realm=\"test\""},
+			expectNil: true,
+		},
+		{
+			name:           "Mixed - Basic and Negotiate",
+			headers:        []string{"Basic realm=\"test\"", "Negotiate"},
+			expectNil:      false,
+			expectHasToken: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			header := make(http.Header)
+			for _, h := range tt.headers {
+				header.Add("WWW-Authenticate", h)
+			}
+
+			challenge := findNegotiateChallenge(header)
+
+			if tt.expectNil {
+				assert.Nil(t, challenge)
+			} else {
+				require.NotNil(t, challenge)
+				assert.Equal(t, tt.expectHasToken, challenge.hasToken)
+
+				if tt.expectHasToken {
+					assert.Equal(t, tt.expectToken, challenge.token)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildMICResponseToken tests the buildMICResponseToken method.
+func TestBuildMICResponseToken(t *testing.T) {
+	t.Run("fails without MechTypeListDER", func(t *testing.T) {
+		client := NewNegotiateClient(nil, "HTTP/test")
+		client.ctx = NewClientContext(dummySessionKey(), 0, 0)
+		_ = client.ctx.SetInProgress()
+		_ = client.ctx.SetEstablished()
+
+		// No MechTypeListDER set - should fail.
+		_, err := client.buildMICResponseToken()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "mechListMIC")
+	})
+
+	t.Run("succeeds with MechTypeListDER", func(t *testing.T) {
+		client := NewNegotiateClient(nil, "HTTP/test")
+		client.ctx = NewClientContext(dummySessionKey(), 0, 0)
+		_ = client.ctx.SetInProgress()
+		_ = client.ctx.SetEstablished()
+
+		// Set up MechTypeListDER.
+		mechTypes := []asn1.ObjectIdentifier{gssapi.OIDKRB5.OID()}
+		der, err := MarshalMechTypeList(mechTypes)
+		require.NoError(t, err)
+		client.ctx.SetMechTypeListDER(der)
+
+		// Should succeed now.
+		tokenBytes, err := client.buildMICResponseToken()
+		require.NoError(t, err)
+		assert.NotEmpty(t, tokenBytes)
+
+		// Verify it's a valid SPNEGO token.
+		var spnegoToken SPNEGOToken
+
+		err = spnegoToken.Unmarshal(tokenBytes)
+		require.NoError(t, err)
+		assert.True(t, spnegoToken.Resp)
+		assert.NotEmpty(t, spnegoToken.NegTokenResp.MechListMIC)
+	})
+}
+
+// TestProcessNegTokenRespRequestMIC tests handling of NegStateRequestMIC.
+func TestProcessNegTokenRespRequestMIC(t *testing.T) {
+	client := NewNegotiateClient(nil, "HTTP/test")
+	client.ctx = NewClientContext(dummySessionKey(), 0, 0)
+	_ = client.ctx.SetInProgress()
+
+	// Set up MechTypeListDER for MIC generation.
+	mechTypes := []asn1.ObjectIdentifier{gssapi.OIDKRB5.OID()}
+	der, err := MarshalMechTypeList(mechTypes)
+	require.NoError(t, err)
+	client.ctx.SetMechTypeListDER(der)
+
+	// Create a NegTokenResp with RequestMIC state.
+	negResp := &NegTokenResp{
+		NegState: asn1.Enumerated(NegStateRequestMIC),
+	}
+
+	// Process should return a response token.
+	responseToken, err := client.processNegTokenResp(negResp)
+	require.NoError(t, err)
+	assert.NotNil(t, responseToken)
+	assert.NotEmpty(t, responseToken)
+
+	// Verify the response token is a valid SPNEGO NegTokenResp with MechListMIC.
+	var spnegoToken SPNEGOToken
+
+	err = spnegoToken.Unmarshal(responseToken)
+	require.NoError(t, err)
+	assert.True(t, spnegoToken.Resp)
+	assert.NotEmpty(t, spnegoToken.NegTokenResp.MechListMIC)
+}

@@ -89,9 +89,10 @@ func (c *NegotiateClient) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, nil
 	}
 
-	// Check for WWW-Authenticate: Negotiate header.
-	authHeader := resp.Header.Get(HTTPHeaderAuthResponse)
-	if !strings.HasPrefix(authHeader, HTTPHeaderAuthResponseValueKey) {
+	// Check for WWW-Authenticate: Negotiate header(s).
+	// HTTP allows multiple WWW-Authenticate headers (e.g., Negotiate and Kerberos).
+	challenge := findNegotiateChallenge(resp.Header)
+	if challenge == nil {
 		return resp, nil
 	}
 
@@ -99,17 +100,13 @@ func (c *NegotiateClient) RoundTrip(req *http.Request) (*http.Response, error) {
 	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
-	// Step 1: Handle bare "Negotiate" - send initial token.
-	authValue := strings.TrimPrefix(authHeader, HTTPHeaderAuthResponseValueKey)
-	authValue = strings.TrimSpace(authValue)
-
-	if authValue == "" {
+	if !challenge.hasToken {
 		// Bare Negotiate header - start authentication.
 		return c.handleInitialChallenge(req)
 	}
 
-	// Step 2: Handle "Negotiate <token>" - process server response.
-	return c.handleServerToken(req, authValue)
+	// Handle "Negotiate <token>" - process server response.
+	return c.handleServerToken(req, challenge.token)
 }
 
 // handleInitialChallenge processes the initial 401 with bare "Negotiate" header.
@@ -187,19 +184,15 @@ func (c *NegotiateClient) handleInitialChallenge(req *http.Request) (*http.Respo
 
 	// Check if we got a success (2xx) or another challenge (401).
 	if resp.StatusCode == http.StatusUnauthorized {
-		// Check for another Negotiate challenge.
-		authHeader := resp.Header.Get(HTTPHeaderAuthResponse)
-		if authValue, found := strings.CutPrefix(authHeader, HTTPHeaderAuthResponseValueKey); found {
-			authValue = strings.TrimSpace(authValue)
+		// Check for another Negotiate challenge with a token.
+		challenge := findNegotiateChallenge(resp.Header)
+		if challenge != nil && challenge.hasToken {
+			// Drain and close response body.
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
 
-			if authValue != "" {
-				// Drain and close response body.
-				_, _ = io.Copy(io.Discard, resp.Body)
-				resp.Body.Close()
-
-				// Process server's response token.
-				return c.handleServerToken(newReq, authValue)
-			}
+			// Process server's response token.
+			return c.handleServerToken(newReq, challenge.token)
 		}
 	}
 
@@ -222,11 +215,12 @@ func (c *NegotiateClient) handleServerToken(req *http.Request, tokenB64 string) 
 		return nil, err
 	}
 
-	if err := c.processNegTokenResp(negResp); err != nil {
+	responseToken, err := c.processNegTokenResp(negResp)
+	if err != nil {
 		return nil, err
 	}
 
-	return c.sendFinalRequest(req)
+	return c.sendFinalRequest(req, responseToken)
 }
 
 // decodeNegTokenResp decodes a base64 token and returns the NegTokenResp.
@@ -252,34 +246,72 @@ func (c *NegotiateClient) decodeNegTokenResp(tokenB64 string) (*NegTokenResp, er
 }
 
 // processNegTokenResp processes the negotiation response state and tokens.
-func (c *NegotiateClient) processNegTokenResp(negResp *NegTokenResp) error {
+// Returns a client response token (may be nil) to send back to the server.
+func (c *NegotiateClient) processNegTokenResp(negResp *NegTokenResp) ([]byte, error) {
 	switch negResp.State() {
 	case NegStateReject:
 		c.ctx.SetFailed()
-		return errors.New("server rejected authentication")
+		return nil, errors.New("server rejected authentication")
 
 	case NegStateAcceptCompleted, NegStateAcceptIncomplete:
 		if err := c.verifyResponseToken(negResp); err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := c.verifyMechListMIC(negResp); err != nil {
-			return err
+			return nil, err
 		}
 
 		if negResp.State() == NegStateAcceptCompleted {
 			if err := c.ctx.SetEstablished(); err != nil {
 				c.ctx.SetFailed()
-				return fmt.Errorf("failed to establish context: %w", err)
+				return nil, fmt.Errorf("failed to establish context: %w", err)
 			}
 		}
 
 	case NegStateRequestMIC:
-		c.ctx.SetFailed()
-		return errors.New("server requested MIC - not supported")
+		// Server requested mechListMIC - generate and return a response token.
+		if err := c.verifyResponseToken(negResp); err != nil {
+			return nil, err
+		}
+
+		responseToken, err := c.buildMICResponseToken()
+		if err != nil {
+			c.ctx.SetFailed()
+			return nil, fmt.Errorf("failed to build MIC response: %w", err)
+		}
+
+		return responseToken, nil
 	}
 
-	return nil
+	return nil, nil
+}
+
+// buildMICResponseToken creates a NegTokenResp containing only the mechListMIC.
+// This is sent in response to NegStateRequestMIC from the server.
+func (c *NegotiateClient) buildMICResponseToken() ([]byte, error) {
+	mic, err := c.ctx.MechListMIC()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate mechListMIC: %w", err)
+	}
+
+	// Build a NegTokenResp with just the mechListMIC.
+	clientResp := NegTokenResp{
+		MechListMIC: mic,
+	}
+
+	// Wrap in SPNEGOToken for marshaling.
+	spnegoToken := &SPNEGOToken{
+		Resp:         true,
+		NegTokenResp: clientResp,
+	}
+
+	tokenBytes, err := spnegoToken.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal response token: %w", err)
+	}
+
+	return tokenBytes, nil
 }
 
 // verifyResponseToken verifies the KRB5 token in the response.
@@ -332,8 +364,14 @@ func (c *NegotiateClient) verifyMechListMIC(negResp *NegTokenResp) error {
 }
 
 // sendFinalRequest sends the final request after processing the server token.
-func (c *NegotiateClient) sendFinalRequest(req *http.Request) (*http.Response, error) {
+// If responseToken is non-nil, it is included in the Authorization header.
+func (c *NegotiateClient) sendFinalRequest(req *http.Request, responseToken []byte) (*http.Response, error) {
 	newReq := cloneRequest(req)
+
+	// Include response token in Authorization header if provided.
+	if len(responseToken) > 0 {
+		newReq.Header.Set(HTTPHeaderAuthRequest, HTTPHeaderAuthResponseValueKey+" "+base64.StdEncoding.EncodeToString(responseToken))
+	}
 
 	resp, err := c.transport.RoundTrip(newReq)
 	if err != nil {
@@ -367,19 +405,16 @@ func (c *NegotiateClient) handleSuccessResponse(resp *http.Response) (*http.Resp
 
 // processFinalAuthToken processes a final Negotiate token in the response header.
 func (c *NegotiateClient) processFinalAuthToken(resp *http.Response) error {
-	authHeader := resp.Header.Get(HTTPHeaderAuthResponse)
-
-	authValue, found := strings.CutPrefix(authHeader, HTTPHeaderAuthResponseValueKey)
-	if !found {
+	challenge := findNegotiateChallenge(resp.Header)
+	if challenge == nil || !challenge.hasToken {
 		return nil
 	}
 
-	authValue = strings.TrimSpace(authValue)
-	if authValue == "" || c.ctx == nil || c.ctx.State() != ContextStateInProgress {
+	if c.ctx == nil || c.ctx.State() != ContextStateInProgress {
 		return nil
 	}
 
-	tokenBytes, err := base64.StdEncoding.DecodeString(authValue)
+	tokenBytes, err := base64.StdEncoding.DecodeString(challenge.token)
 	if err != nil {
 		c.ctx.SetFailed()
 		return fmt.Errorf("failed to decode final token: %w", err)
@@ -471,6 +506,47 @@ func cloneRequest(req *http.Request) *http.Request {
 	}
 
 	return newReq
+}
+
+// negotiateChallenge represents a parsed Negotiate challenge from WWW-Authenticate.
+type negotiateChallenge struct {
+	// hasToken indicates whether the challenge includes a token.
+	hasToken bool
+	// token is the base64-encoded token (empty if hasToken is false).
+	token string
+}
+
+// findNegotiateChallenge searches through all WWW-Authenticate headers to find
+// the best Negotiate challenge. It prefers "Negotiate <token>" over bare "Negotiate".
+// Returns nil if no Negotiate challenge is found.
+func findNegotiateChallenge(headers http.Header) *negotiateChallenge {
+	values := headers.Values(HTTPHeaderAuthResponse)
+	if len(values) == 0 {
+		return nil
+	}
+
+	var bareNegotiate *negotiateChallenge
+
+	for _, value := range values {
+		if !strings.HasPrefix(value, HTTPHeaderAuthResponseValueKey) {
+			continue
+		}
+
+		token := strings.TrimPrefix(value, HTTPHeaderAuthResponseValueKey)
+		token = strings.TrimSpace(token)
+
+		if token != "" {
+			// Prefer "Negotiate <token>" - return immediately.
+			return &negotiateChallenge{hasToken: true, token: token}
+		}
+
+		// Remember bare "Negotiate" in case we don't find one with a token.
+		if bareNegotiate == nil {
+			bareNegotiate = &negotiateChallenge{hasToken: false, token: ""}
+		}
+	}
+
+	return bareNegotiate
 }
 
 // NegotiatingRoundTripper is an http.RoundTripper that handles SPNEGO authentication.
