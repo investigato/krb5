@@ -330,8 +330,9 @@ func (c *ClientContext) VerifyMIC(token *gssapi.MICToken, payload []byte) (bool,
 	return token.Verify(key, keyUsage)
 }
 
-// Wrap encrypts and signs the given payload.
+// Wrap creates a sign-only (integrity) wrap token for the given payload.
 // This method gates on context establishment.
+// For encrypted (sealed) tokens, use WrapSealed instead.
 func (c *ClientContext) Wrap(payload []byte) (*gssapi.WrapToken, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -353,11 +354,11 @@ func (c *ClientContext) Wrap(payload []byte) (*gssapi.WrapToken, error) {
 	// Determine flags based on role.
 	var flags byte
 	if !c.isInitiator {
-		flags |= 0x01 // Acceptor flag.
+		flags |= gssapi.WrapTokenFlagSentByAcceptor
 	}
 
 	if c.subkey != nil {
-		flags |= 0x04 // Acceptor subkey flag.
+		flags |= gssapi.WrapTokenFlagAcceptorSubkey
 	}
 
 	token := &gssapi.WrapToken{
@@ -381,14 +382,55 @@ func (c *ClientContext) Wrap(payload []byte) (*gssapi.WrapToken, error) {
 	return token, nil
 }
 
-// Unwrap decrypts and verifies a wrapped payload.
+// WrapSealed creates an encrypted (sealed) wrap token for the given payload.
+// This provides confidentiality in addition to integrity per RFC 4121.
 // This method gates on context establishment.
+func (c *ClientContext) WrapSealed(payload []byte) ([]byte, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.state != ContextStateEstablished {
+		return nil, fmt.Errorf("cannot wrap: context not established (state: %s)", c.state)
+	}
+
+	key := c.sessionKey
+	if c.subkey != nil {
+		key = *c.subkey
+	}
+
+	// Determine flags based on role.
+	var flags byte
+	if !c.isInitiator {
+		flags |= gssapi.WrapTokenFlagSentByAcceptor
+	}
+
+	if c.subkey != nil {
+		flags |= gssapi.WrapTokenFlagAcceptorSubkey
+	}
+
+	// Initiator uses GSSAPI_INITIATOR_SEAL, acceptor uses GSSAPI_ACCEPTOR_SEAL.
+	keyUsage := uint32(keyusage.GSSAPI_INITIATOR_SEAL)
+	if !c.isInitiator {
+		keyUsage = keyusage.GSSAPI_ACCEPTOR_SEAL
+	}
+
+	return gssapi.NewSealedWrapToken(payload, key, keyUsage, flags, c.nextSendSeqNumLocked())
+}
+
+// Unwrap verifies a sign-only wrapped payload and returns the plaintext.
+// This method gates on context establishment.
+// For encrypted (sealed) tokens, use UnwrapSealed instead.
 func (c *ClientContext) Unwrap(token *gssapi.WrapToken) ([]byte, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.state != ContextStateEstablished {
 		return nil, fmt.Errorf("cannot unwrap: context not established (state: %s)", c.state)
+	}
+
+	// Check if this is a sealed token - if so, return an error.
+	if token.IsSealed() {
+		return nil, errors.New("token is sealed (use UnwrapSealed for encrypted tokens)")
 	}
 
 	key := c.sessionKey
@@ -399,7 +441,7 @@ func (c *ClientContext) Unwrap(token *gssapi.WrapToken) ([]byte, error) {
 	// Determine key usage based on who sent the token.
 	// If sent by acceptor (server), use GSSAPI_ACCEPTOR_SEAL.
 	keyUsage := uint32(keyusage.GSSAPI_ACCEPTOR_SEAL)
-	if token.Flags&0x01 == 0 {
+	if token.Flags&gssapi.WrapTokenFlagSentByAcceptor == 0 {
 		keyUsage = keyusage.GSSAPI_INITIATOR_SEAL
 	}
 
@@ -413,6 +455,63 @@ func (c *ClientContext) Unwrap(token *gssapi.WrapToken) ([]byte, error) {
 	}
 
 	return token.Payload, nil
+}
+
+// UnwrapSealed decrypts a sealed wrap token and returns the plaintext.
+// This method gates on context establishment.
+func (c *ClientContext) UnwrapSealed(tokenBytes []byte) ([]byte, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.state != ContextStateEstablished {
+		return nil, fmt.Errorf("cannot unwrap: context not established (state: %s)", c.state)
+	}
+
+	key := c.sessionKey
+	if c.subkey != nil {
+		key = *c.subkey
+	}
+
+	// Determine if we expect the token from acceptor.
+	// As initiator, we expect tokens from acceptor. As acceptor, we expect from initiator.
+	expectFromAcceptor := c.isInitiator
+
+	// Determine key usage based on who sent the token.
+	keyUsage := uint32(keyusage.GSSAPI_ACCEPTOR_SEAL)
+	if !expectFromAcceptor {
+		keyUsage = keyusage.GSSAPI_INITIATOR_SEAL
+	}
+
+	return gssapi.UnwrapSealed(tokenBytes, key, keyUsage, expectFromAcceptor)
+}
+
+// UnwrapAuto automatically detects whether a token is sealed or sign-only and processes it.
+// This provides a unified API similar to SSPI's DecryptMessage.
+// This method gates on context establishment.
+func (c *ClientContext) UnwrapAuto(tokenBytes []byte) (*gssapi.UnwrapResult, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.state != ContextStateEstablished {
+		return nil, fmt.Errorf("cannot unwrap: context not established (state: %s)", c.state)
+	}
+
+	key := c.sessionKey
+	if c.subkey != nil {
+		key = *c.subkey
+	}
+
+	// Determine if we expect the token from acceptor.
+	// As initiator, we expect tokens from acceptor. As acceptor, we expect from initiator.
+	expectFromAcceptor := c.isInitiator
+
+	// Determine key usage based on who sent the token.
+	keyUsage := uint32(keyusage.GSSAPI_ACCEPTOR_SEAL)
+	if !expectFromAcceptor {
+		keyUsage = keyusage.GSSAPI_INITIATOR_SEAL
+	}
+
+	return gssapi.Unwrap(tokenBytes, key, keyUsage, expectFromAcceptor)
 }
 
 // nextSendSeqNumLocked returns and increments the send sequence number.

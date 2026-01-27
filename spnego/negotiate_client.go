@@ -598,8 +598,9 @@ func (c *NegotiateClient) Wrap(payload []byte) (*gssapi.WrapToken, error) {
 	return c.ctx.Wrap(payload)
 }
 
-// Unwrap decrypts and verifies a wrapped payload.
+// Unwrap verifies a sign-only wrapped payload and returns the plaintext.
 // Returns an error if the context is not established.
+// For encrypted (sealed) tokens, use UnwrapSealed or UnwrapAuto instead.
 func (c *NegotiateClient) Unwrap(token *gssapi.WrapToken) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -609,6 +610,47 @@ func (c *NegotiateClient) Unwrap(token *gssapi.WrapToken) ([]byte, error) {
 	}
 
 	return c.ctx.Unwrap(token)
+}
+
+// WrapSealed creates an encrypted (sealed) wrap token for the given payload.
+// This provides confidentiality in addition to integrity per RFC 4121.
+// Returns an error if the context is not established.
+func (c *NegotiateClient) WrapSealed(payload []byte) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.ctx == nil {
+		return nil, errors.New("no security context")
+	}
+
+	return c.ctx.WrapSealed(payload)
+}
+
+// UnwrapSealed decrypts a sealed wrap token and returns the plaintext.
+// Returns an error if the context is not established.
+func (c *NegotiateClient) UnwrapSealed(tokenBytes []byte) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.ctx == nil {
+		return nil, errors.New("no security context")
+	}
+
+	return c.ctx.UnwrapSealed(tokenBytes)
+}
+
+// UnwrapAuto automatically detects whether a token is sealed or sign-only and processes it.
+// This provides a unified API similar to SSPI's DecryptMessage.
+// Returns an error if the context is not established.
+func (c *NegotiateClient) UnwrapAuto(tokenBytes []byte) (*gssapi.UnwrapResult, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.ctx == nil {
+		return nil, errors.New("no security context")
+	}
+
+	return c.ctx.UnwrapAuto(tokenBytes)
 }
 
 // SessionKey returns the session key from the security context.
