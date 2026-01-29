@@ -236,7 +236,7 @@ func TestSealedWrapToken_RoundTrip(t *testing.T) {
 	// Create a sealed token as initiator.
 	var flags byte = 0 // Initiator.
 
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, flags, 12345)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, flags, 12345, 16)
 	require.NoError(t, err)
 	require.NotNil(t, tokenBytes)
 
@@ -251,6 +251,40 @@ func TestSealedWrapToken_RoundTrip(t *testing.T) {
 	assert.Equal(t, payload, decrypted)
 }
 
+func TestSealedWrapToken_MSKILE_EC_RRC(t *testing.T) {
+	t.Parallel()
+
+	key := getAES256Key()
+	payload := []byte("test payload")
+
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 0, 16)
+	require.NoError(t, err)
+
+	// Verify EC and RRC values per MS-KILE specification.
+	// For AES256-CTS-HMAC-SHA1-96:
+	// - EC = 16 (one AES block)
+	// - RRC = EC + confounder + checksum = 16 + 16 + 12 = 44
+	ec := binary.BigEndian.Uint16(tokenBytes[4:6])
+	rrc := binary.BigEndian.Uint16(tokenBytes[6:8])
+
+	assert.Equal(t, uint16(16), ec, "EC should be 16 (one AES block) for MS-KILE compatibility")
+	assert.Equal(t, uint16(44), rrc, "RRC should be 44 (EC + confounder + checksum) for MS-KILE compatibility")
+
+	// Verify SignatureLength calculation for MS-WSMV format.
+	signatureLen := HdrLen + int(rrc)
+	assert.Equal(t, 60, signatureLen, "SignatureLength should be 60 (16 header + 44 RRC)")
+
+	// Verify the helper function works.
+	extractedRRC, err := GetSealedTokenRRC(tokenBytes)
+	require.NoError(t, err)
+	assert.Equal(t, uint16(44), extractedRRC)
+
+	// Verify round-trip still works with the new EC/RRC values.
+	decrypted, err := UnwrapSealed(tokenBytes, key, initiatorSeal, false)
+	require.NoError(t, err)
+	assert.Equal(t, payload, decrypted)
+}
+
 func TestSealedWrapToken_Acceptor(t *testing.T) {
 	t.Parallel()
 
@@ -260,7 +294,7 @@ func TestSealedWrapToken_Acceptor(t *testing.T) {
 	// Create a sealed token as acceptor.
 	flags := WrapTokenFlagSentByAcceptor
 
-	tokenBytes, err := NewSealedWrapToken(payload, key, acceptorSeal, flags, 99999)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, acceptorSeal, flags, 99999, 16)
 	require.NoError(t, err)
 
 	// Verify flags.
@@ -281,7 +315,7 @@ func TestSealedWrapToken_WithAcceptorSubkey(t *testing.T) {
 	// Create a sealed token with acceptor subkey flag.
 	flags := WrapTokenFlagAcceptorSubkey
 
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, flags, 1)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, flags, 1, 16)
 	require.NoError(t, err)
 
 	// Verify flags.
@@ -300,7 +334,7 @@ func TestSealedWrapToken_EmptyPayload(t *testing.T) {
 	key := getAES256Key()
 	payload := []byte{}
 
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, 0, 0)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 0, 16)
 	require.NoError(t, err)
 
 	decrypted, err := UnwrapSealed(tokenBytes, key, initiatorSeal, false)
@@ -319,7 +353,7 @@ func TestSealedWrapToken_LargePayload(t *testing.T) {
 		payload[i] = byte(i % 256)
 	}
 
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, 0, 0)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 0, 16)
 	require.NoError(t, err)
 
 	decrypted, err := UnwrapSealed(tokenBytes, key, initiatorSeal, false)
@@ -333,7 +367,7 @@ func TestSealedWrapToken_WrongKey(t *testing.T) {
 	key := getAES256Key()
 	payload := []byte("secret data")
 
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, 0, 0)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 0, 16)
 	require.NoError(t, err)
 
 	// Try to decrypt with wrong key.
@@ -350,7 +384,7 @@ func TestSealedWrapToken_WrongKeyUsage(t *testing.T) {
 	key := getAES256Key()
 	payload := []byte("test data")
 
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, 0, 0)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 0, 16)
 	require.NoError(t, err)
 
 	// Try to decrypt with wrong key usage.
@@ -365,7 +399,7 @@ func TestSealedWrapToken_WrongDirection(t *testing.T) {
 	payload := []byte("test data")
 
 	// Create token from initiator.
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, 0, 0)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 0, 16)
 	require.NoError(t, err)
 
 	// Try to unwrap expecting from acceptor.
@@ -409,7 +443,7 @@ func TestSealedWrapToken_CorruptedCiphertext(t *testing.T) {
 	key := getAES256Key()
 	payload := []byte("test data")
 
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, 0, 0)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 0, 16)
 	require.NoError(t, err)
 
 	// Corrupt the ciphertext.
@@ -492,6 +526,88 @@ func TestRotateRight(t *testing.T) {
 	}
 }
 
+func TestRotateLeft(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    []byte
+		n        int
+		expected []byte
+	}{
+		{
+			name:     "no rotation",
+			input:    []byte{1, 2, 3, 4, 5},
+			n:        0,
+			expected: []byte{1, 2, 3, 4, 5},
+		},
+		{
+			name:     "rotate by 1",
+			input:    []byte{1, 2, 3, 4, 5},
+			n:        1,
+			expected: []byte{2, 3, 4, 5, 1},
+		},
+		{
+			name:     "rotate by 2",
+			input:    []byte{1, 2, 3, 4, 5},
+			n:        2,
+			expected: []byte{3, 4, 5, 1, 2},
+		},
+		{
+			name:     "rotate by length (full cycle)",
+			input:    []byte{1, 2, 3, 4, 5},
+			n:        5,
+			expected: []byte{1, 2, 3, 4, 5},
+		},
+		{
+			name:     "rotate by more than length",
+			input:    []byte{1, 2, 3, 4, 5},
+			n:        7,
+			expected: []byte{3, 4, 5, 1, 2}, // Same as 7 % 5 = 2.
+		},
+		{
+			name:     "empty slice",
+			input:    []byte{},
+			n:        5,
+			expected: []byte{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data := make([]byte, len(tc.input))
+			copy(data, tc.input)
+			rotateLeft(data, tc.n)
+			assert.Equal(t, tc.expected, data)
+		})
+	}
+}
+
+func TestRotateLeftRightInverse(t *testing.T) {
+	t.Parallel()
+
+	// Rotating left by n and then right by n should give original.
+	original := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	for n := 0; n <= len(original)+2; n++ {
+		data := make([]byte, len(original))
+		copy(data, original)
+
+		rotateRight(data, n)
+		rotateLeft(data, n)
+		assert.Equal(t, original, data, "rotateRight then rotateLeft with n=%d", n)
+	}
+
+	// Rotating right by n and then left by n should also give original.
+	for n := 0; n <= len(original)+2; n++ {
+		data := make([]byte, len(original))
+		copy(data, original)
+
+		rotateLeft(data, n)
+		rotateRight(data, n)
+		assert.Equal(t, original, data, "rotateLeft then rotateRight with n=%d", n)
+	}
+}
+
 // Tests for auto-detect Unwrap function.
 
 func TestUnwrap_AutoDetectSealed(t *testing.T) {
@@ -501,7 +617,7 @@ func TestUnwrap_AutoDetectSealed(t *testing.T) {
 	payload := []byte("sealed message for auto-detect")
 
 	// Create a sealed token.
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, 0, 42)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 42, 16)
 	require.NoError(t, err)
 
 	// Use auto-detect Unwrap.
@@ -542,7 +658,7 @@ func TestUnwrap_AutoDetectFromAcceptor(t *testing.T) {
 	payload := []byte("response from server")
 
 	// Create a sealed token from acceptor.
-	tokenBytes, err := NewSealedWrapToken(payload, key, acceptorSeal, WrapTokenFlagSentByAcceptor, 100)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, acceptorSeal, WrapTokenFlagSentByAcceptor, 100, 16)
 	require.NoError(t, err)
 
 	// Use auto-detect Unwrap expecting from acceptor.
@@ -561,7 +677,7 @@ func TestUnwrap_AutoDetectWrongDirection(t *testing.T) {
 	payload := []byte("test")
 
 	// Create a sealed token from initiator.
-	tokenBytes, err := NewSealedWrapToken(payload, key, initiatorSeal, 0, 0)
+	tokenBytes, err := NewSealedWrapTokenDCE(payload, key, initiatorSeal, 0, 0, 16)
 	require.NoError(t, err)
 
 	// Try to unwrap expecting from acceptor - should fail.

@@ -247,9 +247,28 @@ func (wt *WrapToken) IsSealed() bool {
 	return wt.Flags&WrapTokenFlagSealed != 0
 }
 
-// NewSealedWrapToken creates a new sealed (encrypted) wrap token.
-// The payload is encrypted along with a copy of the header per RFC 4121.
-func NewSealedWrapToken(payload []byte, key types.EncryptionKey, keyUsage uint32, flags byte, seqNum uint64) ([]byte, error) {
+// NewSealedWrapToken creates a new sealed (encrypted) wrap token per RFC 4121.
+// This produces a standard CFX wrap token (RRC=0, no rotation). For DCE-style
+// tokens (used by WSMan/PSRP), use NewSealedWrapTokenDCE.
+func NewSealedWrapToken(payload []byte, key types.EncryptionKey, keyUsage uint32, flags byte, seqNum uint64, ec uint16) ([]byte, error) {
+	return newSealedWrapToken(payload, key, keyUsage, flags, seqNum, ec, false)
+}
+
+// NewSealedWrapTokenDCE creates a DCE-style sealed wrap token per RFC 4121
+// Section 4.2.4. The ciphertext is rotated right by RRC bytes.
+//
+// The ec parameter controls the filler/padding length:
+// - EC = 0: No filler bytes (Windows WinRM mode)
+//   RRC = confounder(16) + checksum(12) = 28 bytes
+// - EC = 16: One AES block of padding (MS-KILE mode)
+//   RRC = EC(16) + confounder(16) + checksum(12) = 44 bytes
+//
+// See: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-kile/e94b3acd-8415-4d0d-9786-749d0c39d550
+func NewSealedWrapTokenDCE(payload []byte, key types.EncryptionKey, keyUsage uint32, flags byte, seqNum uint64, ec uint16) ([]byte, error) {
+	return newSealedWrapToken(payload, key, keyUsage, flags, seqNum, ec, true)
+}
+
+func newSealedWrapToken(payload []byte, key types.EncryptionKey, keyUsage uint32, flags byte, seqNum uint64, ec uint16, dceStyle bool) ([]byte, error) {
 	encType, err := crypto.GetEtype(key.KeyType)
 	if err != nil {
 		return nil, fmt.Errorf("error getting encryption type: %w", err)
@@ -258,12 +277,19 @@ func NewSealedWrapToken(payload []byte, key types.EncryptionKey, keyUsage uint32
 	// Set the sealed flag.
 	flags |= WrapTokenFlagSealed
 
-	// EC is the filler length. For simplicity, we use 0 filler.
-	// MIT Kerberos also uses 0 filler in production (non-CFX_EXERCISE mode).
-	ec := uint16(0)
+	// Calculate RRC for DCE-style rotation.
+	// RRC = EC + confounder + checksum
+	// When EC=0 (WinRM): RRC = 0 + 16 + 12 = 28 for AES-SHA1
+	// When EC=16 (MS-KILE): RRC = 16 + 16 + 12 = 44 for AES-SHA1
+	checksumLen := uint16(encType.GetHMACBitLength() / 8)
+	confounderLen := uint16(encType.GetConfounderByteSize())
+	var rrc uint16
+	if dceStyle {
+		rrc = ec + confounderLen + checksumLen
+	}
 
-	// Build the header with EC (filler length) and RRC=0.
-	// Per RFC 4121, EC and RRC are set to 0 in the header copy used for encryption.
+	// Build the header with EC and RRC=0 for the encrypted copy.
+	// Per RFC 4121, the header included in encryption has EC and RRC set to 0.
 	header := make([]byte, HdrLen)
 	copy(header[0:2], getGssWrapTokenId()[:])
 	header[2] = flags
@@ -273,10 +299,10 @@ func NewSealedWrapToken(payload []byte, key types.EncryptionKey, keyUsage uint32
 	binary.BigEndian.PutUint64(header[8:16], seqNum)
 
 	// Build plaintext: data | filler | header.
-	// Since ec=0, there's no filler bytes.
+	// The filler is EC bytes of padding (value 0x00).
 	plaintext := make([]byte, len(payload)+int(ec)+HdrLen)
 	copy(plaintext[0:], payload)
-	// Filler would go here if ec > 0.
+	// Filler bytes (ec bytes of 0x00) are already zero from make().
 	copy(plaintext[len(payload)+int(ec):], header)
 
 	// Encrypt the plaintext.
@@ -285,10 +311,17 @@ func NewSealedWrapToken(payload []byte, key types.EncryptionKey, keyUsage uint32
 		return nil, fmt.Errorf("error encrypting wrap token: %w", err)
 	}
 
-	// Build the final token: header | ciphertext.
-	// Update EC in header to reflect actual filler length (still 0).
+	// Apply DCE-style right rotation by RRC bytes.
+	// This moves the trailing metadata (checksum, confounder portion) to the front.
+	if dceStyle && rrc > 0 && len(ciphertext) > 0 {
+		rotateRight(ciphertext, int(rrc))
+	}
+
+	// Build the final token: header | rotated_ciphertext.
+	// The outer header has the actual RRC value (not 0).
 	token := make([]byte, HdrLen+len(ciphertext))
 	copy(token[0:HdrLen], header)
+	binary.BigEndian.PutUint16(token[6:8], rrc) // Set actual RRC in outer header.
 	copy(token[HdrLen:], ciphertext)
 
 	return token, nil
@@ -369,11 +402,12 @@ func UnwrapSealed(tokenBytes []byte, key types.EncryptionKey, keyUsage uint32, e
 	}
 
 	// Get the ciphertext and undo RRC rotation if needed.
+	// The sender applied right rotation, so we apply left rotation to undo.
 	ciphertext := make([]byte, len(tokenBytes)-HdrLen)
 	copy(ciphertext, tokenBytes[HdrLen:])
 
 	if rrc > 0 && len(ciphertext) > 0 {
-		rotateRight(ciphertext, int(rrc))
+		rotateLeft(ciphertext, int(rrc))
 	}
 
 	// Decrypt the ciphertext.
@@ -486,8 +520,29 @@ func Unwrap(tokenBytes []byte, key types.EncryptionKey, keyUsage uint32, expectF
 	}, nil
 }
 
+// GetSealedTokenRRC returns the RRC (Right Rotation Count) from a sealed wrap token.
+// This is useful for MS-WSMV format where SignatureLength = HdrLen + RRC.
+func GetSealedTokenRRC(tokenBytes []byte) (uint16, error) {
+	if len(tokenBytes) < HdrLen {
+		return 0, errors.New("token too short")
+	}
+
+	// Verify token ID.
+	if !bytes.Equal(getGssWrapTokenId()[:], tokenBytes[0:2]) {
+		return 0, errors.New("wrong Token ID")
+	}
+
+	// Verify sealed flag is set.
+	if tokenBytes[2]&WrapTokenFlagSealed == 0 {
+		return 0, errors.New("token is not sealed")
+	}
+
+	return binary.BigEndian.Uint16(tokenBytes[6:8]), nil
+}
+
 // rotateRight performs a right rotation of the data by n bytes.
-// This undoes the RRC (Right Rotation Count) applied by the sender.
+// After right rotation, the last n bytes move to the front.
+// Used by sender to apply DCE-style rotation.
 func rotateRight(data []byte, n int) {
 	if len(data) == 0 {
 		return
@@ -506,4 +561,24 @@ func rotateRight(data []byte, n int) {
 	copy(tmp, data[:leftRotate])
 	copy(data, data[leftRotate:])
 	copy(data[n:], tmp)
+}
+
+// rotateLeft performs a left rotation of the data by n bytes.
+// After left rotation, the first n bytes move to the end.
+// Used by receiver to undo DCE-style rotation.
+func rotateLeft(data []byte, n int) {
+	if len(data) == 0 {
+		return
+	}
+
+	n %= len(data)
+	if n == 0 {
+		return
+	}
+
+	// Left rotation: first n bytes move to end.
+	tmp := make([]byte, n)
+	copy(tmp, data[:n])
+	copy(data, data[n:])
+	copy(data[len(data)-n:], tmp)
 }

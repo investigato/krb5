@@ -82,6 +82,16 @@ type ClientContext struct {
 
 	// mutualAuthComplete indicates whether mutual authentication succeeded.
 	mutualAuthComplete bool
+
+	// wrapTokenEC controls the EC (filler length) for sealed wrap tokens.
+	// - 0: No filler (Windows WinRM mode, RRC=28 for AES-SHA1)
+	// - 16: One AES block padding (MS-KILE mode, RRC=44 for AES-SHA1)
+	// Default is 0 for maximum compatibility with Windows WinRM.
+	wrapTokenEC uint16
+
+	// wrapTokenDCE enables DCE-style token rotation (RFC 4121 Section 4.2.4).
+	// This is required for WSMan/PSRP over HTTP.
+	wrapTokenDCE bool
 }
 
 // NewClientContext creates a new client-side security context.
@@ -94,7 +104,25 @@ func NewClientContext(sessionKey types.EncryptionKey, flags uint32, initialSeqNu
 		isInitiator: true,
 		flags:       flags,
 		sendSeqNum:  uint64(initialSeqNum),
+		wrapTokenEC: 0, // Default to EC=0 for Windows WinRM compatibility.
 	}
+}
+
+// SetWrapTokenEC sets the EC (filler length) for sealed wrap tokens.
+// - EC=0: No filler bytes (Windows WinRM mode, default)
+// - EC=16: One AES block padding (MS-KILE mode)
+func (c *ClientContext) SetWrapTokenEC(ec uint16) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.wrapTokenEC = ec
+}
+
+// SetWrapTokenDCE enables or disables DCE-style wrap token rotation.
+// DCE-style tokens are required for WSMan/PSRP over HTTP.
+func (c *ClientContext) SetWrapTokenDCE(enabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.wrapTokenDCE = enabled
 }
 
 // State returns the current context state.
@@ -414,7 +442,11 @@ func (c *ClientContext) WrapSealed(payload []byte) ([]byte, error) {
 		keyUsage = keyusage.GSSAPI_ACCEPTOR_SEAL
 	}
 
-	return gssapi.NewSealedWrapToken(payload, key, keyUsage, flags, c.nextSendSeqNumLocked())
+	if c.wrapTokenDCE {
+		return gssapi.NewSealedWrapTokenDCE(payload, key, keyUsage, flags, c.nextSendSeqNumLocked(), c.wrapTokenEC)
+	}
+
+	return gssapi.NewSealedWrapToken(payload, key, keyUsage, flags, c.nextSendSeqNumLocked(), c.wrapTokenEC)
 }
 
 // Unwrap verifies a sign-only wrapped payload and returns the plaintext.
