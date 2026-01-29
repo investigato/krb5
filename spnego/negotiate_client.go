@@ -333,9 +333,15 @@ func (c *NegotiateClient) verifyResponseToken(negResp *NegTokenResp) error {
 			return fmt.Errorf("failed to verify AP-REP: %s", status.Message)
 		}
 	} else if krb5Token.IsKRBError() {
-		krbErr, _ := krb5Token.GetKRBError()
-
 		c.ctx.SetFailed()
+
+		krbErr, err := krb5Token.GetKRBError()
+		if err != nil || krbErr == nil {
+			if err == nil {
+				err = errors.New("missing KRB_ERROR payload")
+			}
+			return fmt.Errorf("server returned KRB_ERROR: %w", err)
+		}
 
 		return fmt.Errorf("server returned KRB_ERROR: %s", krbErr.EText)
 	}
@@ -389,6 +395,9 @@ func (c *NegotiateClient) sendFinalRequest(req *http.Request, responseToken []by
 // handleSuccessResponse processes a successful response, potentially with a final token.
 func (c *NegotiateClient) handleSuccessResponse(resp *http.Response) (*http.Response, error) {
 	if err := c.processFinalAuthToken(resp); err != nil {
+		if resp.Body != nil {
+			resp.Body.Close()
+		}
 		return nil, err
 	}
 
