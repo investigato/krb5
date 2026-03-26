@@ -1,4 +1,4 @@
-module github.com/go-krb5/krb5
+module github.com/investigato/krb5
 
 go 1.25.0
 
