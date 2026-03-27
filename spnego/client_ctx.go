@@ -8,11 +8,11 @@ import (
 
 	"github.com/go-krb5/x/encoding/asn1"
 
-	"github.com/go-krb5/krb5/crypto"
-	"github.com/go-krb5/krb5/gssapi"
-	"github.com/go-krb5/krb5/iana/keyusage"
-	"github.com/go-krb5/krb5/messages"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/crypto"
+	"github.com/investigato/krb5/gssapi"
+	"github.com/investigato/krb5/iana/keyusage"
+	"github.com/investigato/krb5/messages"
+	"github.com/investigato/krb5/types"
 )
 
 // ContextState represents the state of a SPNEGO security context.

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-krb5/krb5/iana/errorcode"
-	"github.com/go-krb5/krb5/messages"
+	"github.com/investigato/krb5/iana/errorcode"
+	"github.com/investigato/krb5/messages"
 )
 
 // SendToKDC performs network actions to send data to the KDC.

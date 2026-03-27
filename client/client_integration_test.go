@@ -19,14 +19,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-krb5/krb5/client"
-	"github.com/go-krb5/krb5/config"
-	"github.com/go-krb5/krb5/credentials"
-	"github.com/go-krb5/krb5/iana/etypeID"
-	"github.com/go-krb5/krb5/keytab"
-	"github.com/go-krb5/krb5/spnego"
-	"github.com/go-krb5/krb5/test"
-	"github.com/go-krb5/krb5/test/testdata"
+	"github.com/investigato/krb5/client"
+	"github.com/investigato/krb5/config"
+	"github.com/investigato/krb5/credentials"
+	"github.com/investigato/krb5/iana/etypeID"
+	"github.com/investigato/krb5/keytab"
+	"github.com/investigato/krb5/spnego"
+	"github.com/investigato/krb5/test"
+	"github.com/investigato/krb5/test/testdata"
 )
 
 func TestClient_SuccessfulLogin_Keytab(t *testing.T) {

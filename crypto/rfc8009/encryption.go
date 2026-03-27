@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-krb5/x/aescts"
 
-	"github.com/go-krb5/krb5/crypto/common"
-	"github.com/go-krb5/krb5/crypto/etype"
-	"github.com/go-krb5/krb5/iana/etypeID"
+	"github.com/investigato/krb5/crypto/common"
+	"github.com/investigato/krb5/crypto/etype"
+	"github.com/investigato/krb5/iana/etypeID"
 )
 
 // EncryptData encrypts the data provided using methods specific to the etype provided as defined in RFC 8009.

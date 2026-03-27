@@ -5,11 +5,11 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/go-krb5/krb5/crypto/etype"
-	"github.com/go-krb5/krb5/iana/chksumtype"
-	"github.com/go-krb5/krb5/iana/etypeID"
-	"github.com/go-krb5/krb5/iana/patype"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/crypto/etype"
+	"github.com/investigato/krb5/iana/chksumtype"
+	"github.com/investigato/krb5/iana/etypeID"
+	"github.com/investigato/krb5/iana/patype"
+	"github.com/investigato/krb5/types"
 )
 
 // GetEtype returns an instances of the required etype struct for the etype ID.

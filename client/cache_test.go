@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/go-krb5/krb5/messages"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/messages"
+	"github.com/investigato/krb5/types"
 )
 
 func TestCache_addEntry_getEntry_remove_clear(t *testing.T) {

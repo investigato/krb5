@@ -14,8 +14,8 @@ import (
 
 	"github.com/go-krb5/x/encoding/asn1"
 
-	"github.com/go-krb5/krb5/gssapi"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/gssapi"
+	"github.com/investigato/krb5/types"
 )
 
 // TestContextStateTransitions tests the state machine transitions.

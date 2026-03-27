@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-krb5/x/identity"
 
-	"github.com/go-krb5/krb5/client"
-	"github.com/go-krb5/krb5/config"
-	"github.com/go-krb5/krb5/credentials"
+	"github.com/investigato/krb5/client"
+	"github.com/investigato/krb5/config"
+	"github.com/investigato/krb5/credentials"
 )
 
 // NewKRB5BasicAuthenticator creates a new NewKRB5BasicAuthenticator.

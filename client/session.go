@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-krb5/krb5/iana/nametype"
-	"github.com/go-krb5/krb5/krberror"
-	"github.com/go-krb5/krb5/messages"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/iana/nametype"
+	"github.com/investigato/krb5/krberror"
+	"github.com/investigato/krb5/messages"
+	"github.com/investigato/krb5/types"
 )
 
 // sessions hold TGTs and are keyed on the realm name.

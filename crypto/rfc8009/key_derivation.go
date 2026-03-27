@@ -8,8 +8,8 @@ import (
 
 	"golang.org/x/crypto/pbkdf2"
 
-	"github.com/go-krb5/krb5/crypto/etype"
-	"github.com/go-krb5/krb5/iana/etypeID"
+	"github.com/investigato/krb5/crypto/etype"
+	"github.com/investigato/krb5/iana/etypeID"
 )
 
 const (

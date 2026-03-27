@@ -9,16 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-krb5/krb5/config"
-	"github.com/go-krb5/krb5/credentials"
-	"github.com/go-krb5/krb5/crypto"
-	"github.com/go-krb5/krb5/crypto/etype"
-	"github.com/go-krb5/krb5/iana/errorcode"
-	"github.com/go-krb5/krb5/iana/nametype"
-	"github.com/go-krb5/krb5/keytab"
-	"github.com/go-krb5/krb5/krberror"
-	"github.com/go-krb5/krb5/messages"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/config"
+	"github.com/investigato/krb5/credentials"
+	"github.com/investigato/krb5/crypto"
+	"github.com/investigato/krb5/crypto/etype"
+	"github.com/investigato/krb5/iana/errorcode"
+	"github.com/investigato/krb5/iana/nametype"
+	"github.com/investigato/krb5/keytab"
+	"github.com/investigato/krb5/krberror"
+	"github.com/investigato/krb5/messages"
+	"github.com/investigato/krb5/types"
 )
 
 // Client side configuration and state.

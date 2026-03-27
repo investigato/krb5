@@ -12,18 +12,18 @@ import (
 
 	"github.com/go-krb5/x/encoding/asn1"
 
-	"github.com/go-krb5/krb5/asn1tools"
-	"github.com/go-krb5/krb5/config"
-	"github.com/go-krb5/krb5/crypto"
-	"github.com/go-krb5/krb5/iana"
-	"github.com/go-krb5/krb5/iana/asn1apptag"
-	"github.com/go-krb5/krb5/iana/flags"
-	"github.com/go-krb5/krb5/iana/keyusage"
-	"github.com/go-krb5/krb5/iana/msgtype"
-	"github.com/go-krb5/krb5/iana/nametype"
-	"github.com/go-krb5/krb5/iana/patype"
-	"github.com/go-krb5/krb5/krberror"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/asn1tools"
+	"github.com/investigato/krb5/config"
+	"github.com/investigato/krb5/crypto"
+	"github.com/investigato/krb5/iana"
+	"github.com/investigato/krb5/iana/asn1apptag"
+	"github.com/investigato/krb5/iana/flags"
+	"github.com/investigato/krb5/iana/keyusage"
+	"github.com/investigato/krb5/iana/msgtype"
+	"github.com/investigato/krb5/iana/nametype"
+	"github.com/investigato/krb5/iana/patype"
+	"github.com/investigato/krb5/krberror"
+	"github.com/investigato/krb5/types"
 )
 
 type marshalKDCReq struct {

@@ -9,16 +9,16 @@ import (
 
 	"github.com/go-krb5/x/encoding/asn1"
 
-	"github.com/go-krb5/krb5/asn1tools"
-	"github.com/go-krb5/krb5/client"
-	"github.com/go-krb5/krb5/credentials"
-	"github.com/go-krb5/krb5/gssapi"
-	"github.com/go-krb5/krb5/iana/chksumtype"
-	"github.com/go-krb5/krb5/iana/msgtype"
-	"github.com/go-krb5/krb5/krberror"
-	"github.com/go-krb5/krb5/messages"
-	"github.com/go-krb5/krb5/service"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/asn1tools"
+	"github.com/investigato/krb5/client"
+	"github.com/investigato/krb5/credentials"
+	"github.com/investigato/krb5/gssapi"
+	"github.com/investigato/krb5/iana/chksumtype"
+	"github.com/investigato/krb5/iana/msgtype"
+	"github.com/investigato/krb5/krberror"
+	"github.com/investigato/krb5/messages"
+	"github.com/investigato/krb5/service"
+	"github.com/investigato/krb5/types"
 )
 
 // GSSAPI KRB5 MechToken IDs.

@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-krb5/x/encoding/asn1"
 
-	"github.com/go-krb5/krb5/asn1tools"
-	"github.com/go-krb5/krb5/iana"
-	"github.com/go-krb5/krb5/iana/asn1apptag"
+	"github.com/investigato/krb5/asn1tools"
+	"github.com/investigato/krb5/iana"
+	"github.com/investigato/krb5/iana/asn1apptag"
 )
 
 // Authenticator - A record containing information that can be shown to have been recently generated using the session

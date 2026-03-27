@@ -1,8 +1,8 @@
 # krb5
 
-[![GoDoc](https://godoc.org/github.com/go-krb5/krb5?status.svg)](https://godoc.org/github.com/go-krb5/krb5)
-[![Go Report Card](https://goreportcard.com/badge/github.com/go-krb5/krb5)](https://goreportcard.com/report/github.com/go-krb5/krb5)
-[![Version](https://img.shields.io/github/release/go-krb5/krb5.svg)](https://github.com/go-krb5/krb5/releases)
+[![GoDoc](https://godoc.org/github.com/investigato/krb5?status.svg)](https://godoc.org/github.com/investigato/krb5)
+[![Go Report Card](https://goreportcard.com/badge/github.com/investigato/krb5)](https://goreportcard.com/report/github.com/investigato/krb5)
+[![Version](https://img.shields.io/github/release/go-krb5/krb5.svg)](https://github.com/investigato/krb5/releases)
 ![Go version](https://img.shields.io/badge/Go-1.25-brightgreen.svg)
 [![codecov](https://codecov.io/github/go-krb5/krb5/graph/badge.svg?token=P1FN91DTLE)](https://codecov.io/github/go-krb5/krb5)
 ![License](https://img.shields.io/github/license/go-krb5/krb5?logo=apache&color=blue)

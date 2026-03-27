@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-krb5/krb5/iana"
-	"github.com/go-krb5/krb5/iana/addrtype"
-	"github.com/go-krb5/krb5/iana/msgtype"
-	"github.com/go-krb5/krb5/iana/nametype"
-	"github.com/go-krb5/krb5/iana/patype"
-	"github.com/go-krb5/krb5/test/testdata"
+	"github.com/investigato/krb5/iana"
+	"github.com/investigato/krb5/iana/addrtype"
+	"github.com/investigato/krb5/iana/msgtype"
+	"github.com/investigato/krb5/iana/nametype"
+	"github.com/investigato/krb5/iana/patype"
+	"github.com/investigato/krb5/test/testdata"
 )
 
 func TestUnmarshalKDCReqBody(t *testing.T) {

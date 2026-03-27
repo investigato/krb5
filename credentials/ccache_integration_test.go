@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-krb5/krb5/iana/nametype"
-	"github.com/go-krb5/krb5/test"
-	"github.com/go-krb5/krb5/test/testdata"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/iana/nametype"
+	"github.com/investigato/krb5/test"
+	"github.com/investigato/krb5/test/testdata"
+	"github.com/investigato/krb5/types"
 )
 
 const (

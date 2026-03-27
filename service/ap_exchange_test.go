@@ -8,16 +8,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-krb5/krb5/client"
-	"github.com/go-krb5/krb5/config"
-	"github.com/go-krb5/krb5/credentials"
-	"github.com/go-krb5/krb5/iana/errorcode"
-	"github.com/go-krb5/krb5/iana/flags"
-	"github.com/go-krb5/krb5/iana/nametype"
-	"github.com/go-krb5/krb5/keytab"
-	"github.com/go-krb5/krb5/messages"
-	"github.com/go-krb5/krb5/test/testdata"
-	"github.com/go-krb5/krb5/types"
+	"github.com/investigato/krb5/client"
+	"github.com/investigato/krb5/config"
+	"github.com/investigato/krb5/credentials"
+	"github.com/investigato/krb5/iana/errorcode"
+	"github.com/investigato/krb5/iana/flags"
+	"github.com/investigato/krb5/iana/nametype"
+	"github.com/investigato/krb5/keytab"
+	"github.com/investigato/krb5/messages"
+	"github.com/investigato/krb5/test/testdata"
+	"github.com/investigato/krb5/types"
 )
 
 func TestVerifyAPREQ(t *testing.T) {
